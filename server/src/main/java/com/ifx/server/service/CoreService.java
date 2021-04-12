@@ -206,6 +206,7 @@ public class CoreService {
             int[] sorted_sha2Bank = null;
             String computePcrSha1 = null;
             String computePcrSha256 = null;
+            String ekPub = null;
 
             if (user == null || !passwordEncoder.matches(attune.getPassword(),user.getPassword())) {
                 return new Response<String>(Response.STATUS_ERROR, "invalid username or password");
@@ -213,11 +214,17 @@ public class CoreService {
             user.setAkPub(attune.getAkPub());
             user.setAkName(TPMEngine.computePubKeyName(attune.getAkPub()));
             user.setEkCrt(attune.getEkCrt());
+            user.setEkPub(attune.getEkPub());
             user.setEkCrtAttest("Failed");
 
+            ekPub = attune.getEkPub();
+
             if (attune.getImaTemplate() != null) {
+                // 解析每一条度量报告，把每一条报告放到 IMATemplate 类中，并添加到 ArrayList 中
                 List<IMATemplate> IMATemplates = TPMEngine.parseLinuxMeasurements(attune.getImaTemplate(), PLATFORM_PCR);
+                //把所有日志以(hash:filename\n)的格式序列化到 measurementList
                 String measurementList = TPMEngine.printIMATemplate(IMATemplates);
+                //根据度量日志，计算 PCR 的值
                 computePcrSha1 = Hex.toHexString(TPMEngine.computePcrSha1(IMATemplates));
                 computePcrSha256 = Hex.toHexString(TPMEngine.computePcrSha256(IMATemplates));
 
@@ -279,12 +286,12 @@ public class CoreService {
                 sorted_sha1Bank = IntStream.of(sha1Bank).boxed().sorted(Comparator.naturalOrder()).mapToInt(i -> i).toArray();
                 user.setSha1Bank(Arrays.toString(sorted_sha1Bank));
 
-                /* Check PCR10 same as template re-compute value */
+                /* Check PCR11 same as template re-compute value */
                 if (computePcrSha1 != null) {
                     for (int i = 0; i < sorted_sha1Bank.length; i++) {
                         if (sorted_sha1Bank[i] == TPMEngine.PLATFORM_PCR) {
                             if (!sorted_pcrs[i].equalsIgnoreCase(computePcrSha1)) {
-                                return new Response<String>(Response.STATUS_ERROR, "SHA1 PCR-10 value mismatch with template re-computed value (check if IMA configuration is done correctly)");
+                                return new Response<String>(Response.STATUS_ERROR, "SHA1 PCR-11 value mismatch with template re-computed value (check if IMA configuration is done correctly)");
                             }
                         }
                     }
@@ -320,7 +327,7 @@ public class CoreService {
                     for (int i = 0; i < sorted_sha2Bank.length; i++) {
                         if (sorted_sha2Bank[i] == TPMEngine.PLATFORM_PCR) {
                             if (!sorted_pcrs[sha256_start_i + i].equalsIgnoreCase(computePcrSha256)) {
-                                return new Response<String>(Response.STATUS_ERROR, "SHA256 PCR-10 value mismatch with template re-computed value (check if IMA configuration is done correctly)");
+                                return new Response<String>(Response.STATUS_ERROR, "SHA256 PCR-11 value mismatch with template re-computed value (check if IMA configuration is done correctly)");
                             }
                         }
                     }
@@ -334,7 +341,6 @@ public class CoreService {
              */
 
             userRepository.save(user);
-
             /**
              * Send response to active clients via websocket
              */
@@ -433,8 +439,10 @@ public class CoreService {
             if (user == null || !passwordEncoder.matches(attest.getPassword(),user.getPassword())) {
                 return new Response<String>(Response.STATUS_ERROR, "invalid username or password");
             }
+            // 存储相应 hash 值的 PCR 索引
             int[] sha1Bank = fromStr2IntArray(user.getSha1Bank());
             int[] sha256Bank = fromStr2IntArray(user.getSha256Bank());
+            // 存储当前PCR的值
             String[] pcrs = fromStr2StrArray(user.getPcrs());
 
             /**
@@ -444,20 +452,24 @@ public class CoreService {
              *  Compute the SHA1 & SHA256 digest of the re-ordered template
              *  Use the computed digests as good reference and check it against the quote
              */
-            List<IMATemplate> toOrder = TPMEngine.parseLinuxMeasurements(user.getMeasureTemplate(), 10);
-            List<IMATemplate> orderRef = TPMEngine.parseLinuxMeasurements(attest.getImaTemplate(), 10);
+            List<IMATemplate> toOrder = TPMEngine.parseLinuxMeasurements(user.getMeasureTemplate(), 11);
+            List<IMATemplate> orderRef = TPMEngine.parseLinuxMeasurements(attest.getImaTemplate(), 11);
             List<IMATemplate> ordered = orderIMATemplate(toOrder, orderRef);
             String computedPcrSha1 = Hex.toHexString(TPMEngine.computePcrSha1(ordered));
             String computedPcrSha256 = Hex.toHexString(TPMEngine.computePcrSha256(ordered));
             String measureList = TPMEngine.printIMATemplate(orderRef);
-            for (int i = 0; i < sha1Bank.length; i++) {
-                if (sha1Bank[i] == TPMEngine.PLATFORM_PCR) {
-                    pcrs[i] = computedPcrSha1;
+            if (sha1Bank != null) {
+                for (int i = 0; i < sha1Bank.length; i++) {
+                    if (sha1Bank[i] == TPMEngine.PLATFORM_PCR) {
+                        pcrs[i] = computedPcrSha1;
+                    }
                 }
             }
-            for (int i = 0; i < sha256Bank.length; i++) {
-                if (sha256Bank[i] == TPMEngine.PLATFORM_PCR) {
-                    pcrs[sha1Bank.length + i] = computedPcrSha256;
+            if (sha256Bank != null) {
+                for (int i = 0; i < sha256Bank.length; i++) {
+                    if (sha256Bank[i] == TPMEngine.PLATFORM_PCR) {
+                        pcrs[sha1Bank.length + i] = computedPcrSha256;
+                    }
                 }
             }
 

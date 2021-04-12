@@ -35,6 +35,7 @@ public class Attune {
     private String username;
     private String password;
     private String ekCrt;
+    private String ekPub;
     private String akPub;
     private int[] sha1Bank; // pcr sha1 bank indexes
     private int[] sha256Bank; // pcr sha256 bank indexes

@@ -40,7 +40,7 @@ import static tss.Crypto.hash;
 public class TPMEngine {
 
     // Default TPM PCR index used by Linux Integrity Measure Architecture
-    public static final int PLATFORM_PCR = 10;
+    public static final int PLATFORM_PCR = 11;
 
     public PCR_ReadResponse pcrs;
     public byte[] qualification;
@@ -198,16 +198,17 @@ public class TPMEngine {
             /**
              * Generate TPMT_PUBLIC
              */
+            /*
             TPMT_PUBLIC trustedPK = new TPMT_PUBLIC(TPM_ALG_ID.SHA256,
                     new TPMA_OBJECT(new TPMA_OBJECT[]{TPMA_OBJECT.sign, TPMA_OBJECT.sensitiveDataOrigin, TPMA_OBJECT.userWithAuth}),
                     new byte[0],
                     new TPMS_RSA_PARMS(new TPMT_SYM_DEF_OBJECT(TPM_ALG_ID.AES,  128, TPM_ALG_ID.CFB),
                             new TPMS_SIG_SCHEME_RSASSA(TPM_ALG_ID.SHA256), 2048, 65537),
                     new TPM2B_PUBLIC_KEY_RSA(hexStringToByteArray(pubKey)));
-
+            */
+            TPMT_PUBLIC trustedPK = TPM2B_PUBLIC.fromTpm(hexStringToByteArray(pubKey)).publicArea; 
             byte[] baKeyName = hexStringToByteArray(keyName);
             byte[] baSecret = hexStringToByteArray(secret);
-
             /**
              * Generate credential blob
              */
@@ -296,14 +297,14 @@ public class TPMEngine {
                 byte[] filePathValue = new byte[filePathSize];
                 in.read(filePathValue, 0, filePathSize);
 
-                in.read(tmpBytes, 0, 4);
-                int sigSize = ByteBuffer.wrap(tmpBytes).order(ByteOrder.nativeOrder()).getInt();
+                //in.read(tmpBytes, 0, 4);
+                //int sigSize = ByteBuffer.wrap(tmpBytes).order(ByteOrder.nativeOrder()).getInt();
 
-                byte[] sigValue = new byte[sigSize];
-                in.read(sigValue, 0, sigSize);
+                //byte[] sigValue = new byte[sigSize];
+                //in.read(sigValue, 0, sigSize);
 
                 imaTemplates.add(new IMATemplate(pcrNumber, hashValue, new String(templateName),
-                        new String(algoName), digestValue, new String(filePathValue), sigValue));
+                        new String(algoName), digestValue, new String(filePathValue), null));
             }
             return imaTemplates;
         } catch (Exception e) {
@@ -321,7 +322,7 @@ public class TPMEngine {
             String out = "";
             for (int i = 0; i < imaTemplates.size(); i++) {
                 IMATemplate ima = imaTemplates.get(i);
-                out += byteArrayToHexString(ima.getHash()) + ": " + ima.getFileName() + "\n";
+                out += byteArrayToHexString(ima.getHash()) + ": " + ima.getFileName() + ": " + byteArrayToHexString(ima.getDigest()) + "\n";
             }
             return out;
         } catch (Exception e) {
@@ -348,6 +349,46 @@ public class TPMEngine {
                 md.update (imaTemplates.get(i).getHash(), 0, sha1Len);
                 pcr = md.digest();
             }
+            return pcr;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    public static byte[] intToByteArray(int i) {
+        byte[] result = new byte[4];
+
+        result[3] = (byte)((i>>24) & 0xff);
+        result[2] = (byte)((i>>16) & 0xff);
+        result[1] = (byte)((i>>8) & 0xff);
+        result[0] = (byte)(i & 0xff);
+
+        return result;
+    }
+
+    /**
+     * Calculate PCR SHA1 bank using template
+     * @param imaTemplates
+     * @return digest
+     */
+    public static byte[] computeSha1(IMATemplate imaTemplates) {
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-1");
+            byte[] algoName = imaTemplates.getAlgoName().getBytes();
+            byte[] fileName = imaTemplates.getFileName().getBytes();
+            int len2 = fileName.length;
+            byte[] field1Len = intToByteArray(26);
+            byte[] field2Len = intToByteArray(len2);
+
+            md.reset();
+
+            md.update (field1Len, 0, 4);
+            md.update (algoName, 0, 6);
+            md.update (imaTemplates.getDigest(), 0, 20);
+
+            md.update (field2Len, 0, 4);
+            md.update (fileName, 0, len2);
+            byte[] pcr = md.digest();
             return pcr;
         } catch (Exception e) {
             return null;

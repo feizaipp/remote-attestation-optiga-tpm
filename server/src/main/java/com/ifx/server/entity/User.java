@@ -49,11 +49,11 @@ public class User {
     @Column(length = 5000)
     private String ekCrt;
     private String ekCrtAttest;
-    @Column(length = 600)
+    @Column(length = 1000)
     private String ekPub;
-    @Column(length = 600)
+    @Column(length = 1000)
     private String akPub;
-    @Column(length = 600)
+    @Column(length = 1000)
     private String akName;
     private String sha1Bank;
     private String sha256Bank;
