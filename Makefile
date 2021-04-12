@@ -1,5 +1,5 @@
 CC = gcc
-CFLAG = -Wno-deprecated-declarations -lcurl -lconfig -ljson-c
+CFLAG = -Wno-deprecated-declarations -lcurl -lconfig -ljson-c -std=c99
 
 all: attune.c atelic.c attest.c
 	$(CC) $(CFLAG) -o ./bin/attune attune.c

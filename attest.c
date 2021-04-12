@@ -35,7 +35,7 @@ static char *fMalloc(FILE *fd, size_t *sz) {
   return malloc(*sz);  
 }
 
-static char *fByteAry2HexStr(char *ba, size_t size) {
+static char *fByteAry2HexStr(unsigned char *ba, size_t size) {
   int i = 0, j = 0;
   char *str = malloc((size*2)+1);
   
@@ -141,7 +141,7 @@ int main(void)
     FILE *fd = NULL;
     if ((fd = fopen(quote_path, "rb")) != NULL) {
       size_t sz = 0;
-      char *buf = fMalloc(fd, &sz);
+      unsigned char *buf = fMalloc(fd, &sz);
       printf("Quote size: %d Bytes\n",sz);
       fread(buf, sizeof(char), sz, fd);
       fclose(fd);
@@ -166,7 +166,7 @@ int main(void)
     FILE *fd = NULL;
     if ((fd = fopen(sig_path, "rb")) != NULL) {
       size_t sz = 0;
-      char *buf = fMalloc(fd, &sz);
+      unsigned char *buf = fMalloc(fd, &sz);
       printf("Signature size: %d Bytes\n",sz);
       fread(buf, sizeof(char), sz, fd);
       fclose(fd);
@@ -191,7 +191,7 @@ int main(void)
     FILE *fd = NULL;
     if ((fd = fopen(template_path, "rb")) != NULL) {
       size_t sz = 0;
-      char *buf = fMalloc(fd, &sz);
+      unsigned char *buf = fMalloc(fd, &sz);
       printf("IMA template size: %d Bytes\n",sz);
       fread(buf, sizeof(char), sz, fd);
       fclose(fd);

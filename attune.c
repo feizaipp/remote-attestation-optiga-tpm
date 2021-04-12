@@ -35,7 +35,7 @@ static char *fMalloc(FILE *fd, size_t *sz) {
   return malloc(*sz);  
 }
 
-static char *fByteAry2HexStr(char *ba, size_t size) {
+static char *fByteAry2HexStr(unsigned char *ba, size_t size) {
   int i = 0, j = 0;
   char *str = malloc((size*2)+1);
   
@@ -93,6 +93,7 @@ int main(void)
   const char *username = NULL;
   const char *password = NULL;
   const char *ekcrt_path = NULL;
+  const char *ekpub_path = NULL;
   const char *akpub_path = NULL;
   const char *pcrs_path = NULL;
   const char *template_path = NULL;
@@ -108,8 +109,9 @@ int main(void)
   config_t *cf = NULL;
   char *template = NULL;
   char *ekCrt = NULL;
+  char *ekPub = NULL;
   char *akPub = NULL;
-  char *pcrs = NULL;
+  unsigned char *pcrs = NULL;
   json_object *json = NULL;
   struct curl_slist *headers = NULL;
 
@@ -141,13 +143,21 @@ int main(void)
    */
   c1 = config_lookup(cf, "attune.sha1pcrs");
   c2 = config_lookup(cf, "attune.sha2pcrs");
-  pcrs_sha1 = config_setting_length(c1);
-  pcrs_sha2 = config_setting_length(c2);
-  if ((pcrs_sha1 == 0 && pcrs_sha2 == 0) ||
-      (pcrs_sha1 < 0 && pcrs_sha1 > 23) ||
-      (pcrs_sha2 < 0 && pcrs_sha2 > 23)) {
-    printf("invalid sha1pcrs/sha2pcrs\n");
-    goto exit;
+  if (c1) {
+    pcrs_sha1 = config_setting_length(c1);
+    if ((pcrs_sha1 == 0) ||
+        (pcrs_sha1 < 0 && pcrs_sha1 > 23)) {
+      printf("invalid sha1pcrs\n");
+      goto exit;
+    }
+  }
+  if (c2) {
+    pcrs_sha2 = config_setting_length(c2);
+    if ((pcrs_sha2 == 0) ||
+        (pcrs_sha2 < 0 && pcrs_sha2 > 23)) {
+      printf("invalid sha1pcrs/sha2pcrs\n");
+      goto exit;
+    }
   }
 
   /**
@@ -162,7 +172,7 @@ int main(void)
     FILE *fd = NULL;
     if ((fd = fopen(template_path, "rb")) != NULL) {
       size_t sz = 0;
-      char *buf = fMalloc(fd, &sz);
+      unsigned char *buf = fMalloc(fd, &sz);
       printf("IMA template size: %d Bytes\n",sz);
       fread(buf, sizeof(char), sz, fd);
       fclose(fd);
@@ -178,6 +188,7 @@ int main(void)
   /**
    * Read EK certificate
    */
+#if 0
   if (!config_lookup_string(cf, "attune.file_ekCrt", &ekcrt_path)) {
     printf("file_ekCrt is not defined\n");
     goto exit;
@@ -187,7 +198,7 @@ int main(void)
     FILE *fd = NULL;
     if ((fd = fopen(ekcrt_path, "rb")) != NULL) {
       size_t sz = 0;
-      char *buf = fMalloc(fd, &sz);
+      unsigned char *buf = fMalloc(fd, &sz);
       printf("EK certificate size: %d Bytes\n",sz);
       fread(buf, sizeof(char), sz, fd);
       fclose(fd);
@@ -196,6 +207,31 @@ int main(void)
       //printf("%s\n", ekCrt);
     } else {
       printf("EK certificate file not found\n");
+      goto exit;
+    }
+  }
+#endif
+
+  /**
+   * Read EK public key
+   */
+  if (!config_lookup_string(cf, "attune.file_ekPub", &ekpub_path)) {
+    printf("file_ekPub is not defined\n");
+    goto exit;
+  }
+
+  {
+    FILE *fd = NULL;
+    if ((fd = fopen(ekpub_path, "rb")) != NULL) {
+      size_t sz = 0;
+      unsigned char *buf = fMalloc(fd, &sz);
+      printf("EK public key size: %d Bytes\n",sz);
+      fread(buf, sizeof(char), sz, fd);
+      fclose(fd);
+      ekPub = fByteAry2HexStr(buf, sz);
+      free(buf);
+    } else {
+      printf("EK public key file not found\n");
       goto exit;
     }
   }
@@ -212,7 +248,7 @@ int main(void)
     FILE *fd = NULL;
     if ((fd = fopen(akpub_path, "rb")) != NULL) {
       size_t sz = 0;
-      char *buf = fMalloc(fd, &sz);
+      unsigned char *buf = fMalloc(fd, &sz);
       printf("AK public key size: %d Bytes\n",sz);
       fread(buf, sizeof(char), sz, fd);
       fclose(fd);
@@ -240,10 +276,12 @@ int main(void)
       pcrs = fMalloc(fd, &sz);
       fread(pcrs, sizeof(char), sz, fd);
       fclose(fd);
+#if 0
       if (sz != 1248) { // SHA1 bank (20B x 24) + SHA256 bank (32B x 24) = 1248
         printf("Invalid PCRs file format\n");
         goto exit;
       }
+#endif
       printf("PCRs size: %d\n",sz);
     } else {
       printf("PCRs file not found\n");
@@ -258,7 +296,7 @@ int main(void)
   if(curl) {
     char *url = NULL;
 
-    url = malloc(strlen("/atelic") + strlen(server) + 1);
+    url = malloc(strlen("/attune") + strlen(server) + 1);
     url[0] = '\0';
     strcat(url, server);
     strcat(url,"/attune");
@@ -280,40 +318,48 @@ int main(void)
     json = json_object_new_object();
     json_object_object_add(json, "username", json_object_new_string(username));
     json_object_object_add(json, "password", json_object_new_string(password));
-    json_object_object_add(json, "ekCrt", json_object_new_string(ekCrt));
+    //json_object_object_add(json, "ekCrt", json_object_new_string(ekCrt));
+    json_object_object_add(json, "ekPub", json_object_new_string(ekPub));
     json_object_object_add(json, "akPub", json_object_new_string(akPub));
     json_object_object_add(json, "imaTemplate", json_object_new_string(template));
     { // PCR banks
-      strArray = json_object_new_array();
-      { // SHA1 PCR bank
-        size_t i = 0;
-        intArray = json_object_new_array();
-        for (; i < pcrs_sha1; i++) {
-          int index = config_setting_get_int_elem(c1, i);
-          int offset = index*20;
-          char *hexStr = NULL; // 40 chars + endline
 
-          hexStr = fByteAry2HexStr((char *)(pcrs + offset), 20);
-          json_object_array_add(strArray, json_object_new_string(hexStr));
-          free(hexStr);
-          json_object_array_add(intArray, json_object_new_int(index));
-        }
-        json_object_object_add(json, "sha1Bank", intArray);
+      // SHA1 PCR bank
+      if (pcrs_sha1 > 0) {
+        strArray = json_object_new_array();
+          size_t i = 0;
+          intArray = json_object_new_array();
+          printf("pcrs_sha1:%d\n", pcrs_sha1);
+          for (; i < pcrs_sha1; i++) {
+            int index = config_setting_get_int_elem(c1, i);
+            int offset = index*20;
+            printf("index:%d\n", index);
+            printf("offset:%d\n", offset);
+            char *hexStr = NULL; // 40 chars + endline
+
+            hexStr = fByteAry2HexStr((pcrs + offset), 20);
+            printf("pcr:%s\n", hexStr);
+            json_object_array_add(strArray, json_object_new_string(hexStr));
+            free(hexStr);
+            json_object_array_add(intArray, json_object_new_int(index));
+          }
+          json_object_object_add(json, "sha1Bank", intArray);
       }
-      { // SHA256 PCR bank
-        size_t i = 0;
-        intArray = json_object_new_array();
-        for (; i < pcrs_sha2; i++) {
-          int index = config_setting_get_int_elem(c2, i);
-          int offset = (24*20)+(index*32);
-          char *hexStr = NULL; // 64 chars + endline
-        
-          hexStr = fByteAry2HexStr((char *)(pcrs + offset), 32);
-          json_object_array_add(strArray, json_object_new_string(hexStr));
-          free(hexStr);
-          json_object_array_add(intArray, json_object_new_int(index));
-        }
-        json_object_object_add(json, "sha256Bank", intArray);
+      // SHA256 PCR bank
+      if (pcrs_sha2 > 0) {
+          size_t i = 0;
+          intArray = json_object_new_array();
+          for (; i < pcrs_sha2; i++) {
+            int index = config_setting_get_int_elem(c2, i);
+            int offset = (24*20)+(index*32);
+            char *hexStr = NULL; // 64 chars + endline
+
+            hexStr = fByteAry2HexStr((pcrs + offset), 32);
+            json_object_array_add(strArray, json_object_new_string(hexStr));
+            free(hexStr);
+            json_object_array_add(intArray, json_object_new_int(index));
+          }
+          json_object_object_add(json, "sha256Bank", intArray);
       }
       json_object_object_add(json, "pcrs", strArray);
     }
@@ -333,6 +379,7 @@ exit:
   if (json != NULL) json_object_put(json);
   if (headers != NULL) curl_slist_free_all(headers);
   if (ekCrt != NULL) free(ekCrt);
+  if (ekPub != NULL) free(ekPub);
   if (akPub != NULL) free(akPub);
   if (pcrs != NULL) free(pcrs);
   if (template != NULL) free(template);
